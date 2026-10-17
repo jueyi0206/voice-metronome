@@ -1,0 +1,583 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>中文人聲節拍器</title>
+<style>
+  :root{
+    --bg:#14161c; --panel:#1d212b; --line:#2b3140;
+    --ink:#eef1f6; --dim:#8d96a8;
+    --hot:#ffb000; --cool:#4aa8ff; --ok:#3ddc97; --bad:#e2574c;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; min-height:100vh; background:var(--bg); color:var(--ink);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","Noto Sans TC",sans-serif;
+    display:flex; justify-content:center; padding:20px 16px 48px;
+    -webkit-tap-highlight-color:transparent;
+  }
+  .wrap{width:100%; max-width:480px}
+  h1{font-size:20px; margin:4px 0 2px; letter-spacing:1px}
+  .sub{color:var(--dim); font-size:13px; margin:0 0 20px}
+
+  .beats{display:flex; gap:8px; justify-content:center; margin:0 0 18px; min-height:56px; align-items:center}
+  .dot{
+    flex:1; max-width:52px; aspect-ratio:1; border-radius:50%;
+    border:2px solid var(--line); display:flex; align-items:center; justify-content:center;
+    font-size:17px; color:var(--dim);
+    transition:transform .06s, background .18s, color .18s, border-color .18s;
+  }
+  .dot.on{background:var(--cool); border-color:var(--cool); color:#0d1017; transform:scale(1.14)}
+  .dot.on.acc{background:var(--hot); border-color:var(--hot)}
+
+  .bpm{text-align:center; margin-bottom:6px}
+  .bpm b{font-size:64px; font-weight:600; line-height:1; font-variant-numeric:tabular-nums}
+  .bpm span{color:var(--dim); font-size:14px; margin-left:6px}
+  input[type=range]{width:100%; accent-color:var(--cool); height:28px}
+
+  .row{display:flex; gap:8px; margin:10px 0}
+  button{
+    font:inherit; color:var(--ink); background:var(--panel);
+    border:1px solid var(--line); border-radius:10px; padding:11px 10px;
+    cursor:pointer; flex:1; transition:background .15s,border-color .15s;
+  }
+  button:hover{background:#252a36}
+  button.sel{background:var(--cool); border-color:var(--cool); color:#0d1017; font-weight:600}
+  button:disabled{opacity:.35; cursor:not-allowed}
+
+  #play{
+    width:100%; padding:18px; font-size:19px; font-weight:600; margin:16px 0 4px;
+    background:var(--ok); border-color:var(--ok); color:#0b1410;
+  }
+  #play.running{background:var(--bad); border-color:var(--bad); color:#fff}
+
+  .block{background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:14px; margin:12px 0}
+  .lbl{font-size:13px; color:var(--dim); display:flex; justify-content:space-between; margin-bottom:7px}
+  .lbl i{font-style:normal; color:var(--ink); font-variant-numeric:tabular-nums}
+  select{
+    width:100%; font:inherit; color:var(--ink); background:#14171f;
+    border:1px solid var(--line); border-radius:8px; padding:9px;
+  }
+  .hint{font-size:12px; color:var(--dim); line-height:1.65; margin-top:8px}
+  .hint code{background:#14171f; border:1px solid var(--line); border-radius:4px; padding:1px 5px; font-size:11px}
+  .warn{color:var(--hot)}
+
+  /* 人聲檔案狀態 */
+  .slots{display:flex; gap:6px; margin:4px 0 2px}
+  .slot{
+    flex:1; aspect-ratio:1; border-radius:8px; border:1px solid var(--line);
+    background:#14171f; display:flex; align-items:center; justify-content:center;
+    font-size:14px; color:var(--dim); cursor:pointer;
+  }
+  .slot.has{background:var(--ok); border-color:var(--ok); color:#0b1410; font-weight:600}
+  .drop{
+    border:1.5px dashed var(--line); border-radius:10px; padding:16px 12px;
+    text-align:center; color:var(--dim); font-size:13px; cursor:pointer; margin-top:10px;
+  }
+  .drop.over{border-color:var(--ok); color:var(--ok); background:#15231d}
+  .kbd{font-size:12px; color:var(--dim); text-align:center; margin-top:18px}
+  .kbd b{color:var(--ink); background:#14171f; border:1px solid var(--line); border-radius:4px; padding:1px 6px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>中文人聲節拍器</h1>
+  <p class="sub">木魚 ×「一二三四五六七八」</p>
+
+  <div class="beats" id="beats"></div>
+
+  <div class="bpm"><b id="bpmNum">90</b><span>BPM</span></div>
+  <input type="range" id="bpm" min="30" max="240" value="90" step="1">
+
+  <div class="row">
+    <button id="tap">點這裡抓速度</button>
+    <button id="m8">−8</button>
+    <button id="p8">+8</button>
+  </div>
+
+  <button id="play">開始</button>
+
+  <div class="block">
+    <div class="lbl">一小節幾拍</div>
+    <div class="row" id="barRow"></div>
+  </div>
+
+  <div class="block">
+    <div class="lbl">聲音</div>
+    <div class="row" id="modeRow">
+      <button data-mode="wood" class="sel">木魚</button>
+      <button data-mode="voice">中文數拍</button>
+    </div>
+    <div class="lbl" style="margin-top:12px">不一樣的那一拍</div>
+    <div class="row" id="accRow">
+      <button data-acc="last" class="sel">最後一拍</button>
+      <button data-acc="first">第一拍</button>
+      <button data-acc="none">都一樣</button>
+    </div>
+  </div>
+
+  <div class="block">
+    <div class="lbl">音量 <i id="volNum">70%</i></div>
+    <input type="range" id="vol" min="0" max="100" value="70">
+  </div>
+
+  <!-- 人聲來源：只在「中文數拍」模式出現 -->
+  <div class="block" id="voiceBlock" hidden>
+    <div class="lbl">人聲來源</div>
+    <div class="row" id="srcRow">
+      <button data-src="file" class="sel">我的音檔</button>
+      <button data-src="tts">系統語音（代用）</button>
+    </div>
+
+    <div id="filePane">
+      <div class="lbl" style="margin-top:12px">已載入 <i id="loadedNum">0 / 8</i></div>
+      <div class="slots" id="slots"></div>
+      <div class="drop" id="drop">
+        把 <code>1</code>～<code>8</code> 的音檔拖進來，或點這裡選檔案<br>
+        <span style="font-size:11px">wav / mp3 / m4a　檔名開頭是數字就會自動對位</span>
+      </div>
+      <input type="file" id="fileInput" accept="audio/*" multiple hidden>
+      <div class="hint">
+        正式版把檔案放成 <code>voice/1.wav</code> ～ <code>voice/8.wav</code>，開頁面就會自動載入，不用每次拖。<br>
+        開頭的靜音<b style="color:var(--ink)">會自動裁掉</b>，所以錄的時候不用特別對齊，念完整就好。
+      </div>
+      <div class="hint warn" id="fileWarn" hidden></div>
+    </div>
+
+    <div id="ttsPane" hidden>
+      <div class="lbl" style="margin-top:12px">語音</div>
+      <select id="voiceSel"></select>
+      <div class="lbl" style="margin-top:12px">語速 <i id="rateNum">1.25</i></div>
+      <input type="range" id="rate" min="70" max="200" value="125">
+      <div class="lbl" style="margin-top:4px">提前補償 <i id="leadNum">120 ms</i></div>
+      <input type="range" id="lead" min="0" max="400" value="120" step="10">
+      <div class="hint">系統語音有無法預測的延遲，只能靠「提前講」硬對。調到聽起來跟木魚同時就對了。<br>你的音檔載進來之後就不需要這一段 —— 音檔是排在音訊時鐘上的，完全準。</div>
+      <div class="hint warn" id="ttsWarn" hidden></div>
+    </div>
+  </div>
+
+  <div class="kbd"><b>空白鍵</b> 開始／停止　<b>↑</b><b>↓</b> 調速度</div>
+</div>
+
+<script>
+(function(){
+  'use strict';
+
+  var DIGITS = ['一','二','三','四','五','六','七','八'];
+
+  /* ---------- 狀態 ---------- */
+  var bpm = 90, beatsPerBar = 4, mode = 'wood', accentAt = 'last';
+  var vol = 0.7, rate = 1.25, leadMs = 120, voiceSrc = 'file';
+  var running = false;
+
+  var ctx = null, masterGain = null, noiseBuf = null;
+  var voiceBufs = new Array(8).fill(null);     // 你的音檔，解碼後放這
+  var nextNoteTime = 0, beatIndex = 0, timerID = null;
+  var LOOKAHEAD = 25, SCHEDULE_AHEAD = 0.15;
+  var visQueue = [], speechTimers = [];
+
+  var $ = function(id){ return document.getElementById(id); };
+
+  /* ---------- 音訊基礎 ---------- */
+  function initAudio(){
+    if(ctx) return ctx;
+    ctx = new (window.AudioContext || window.webkitAudioContext)();
+    masterGain = ctx.createGain();
+    masterGain.gain.value = vol;
+    masterGain.connect(ctx.destination);
+
+    var len = Math.floor(ctx.sampleRate * 0.2);
+    noiseBuf = ctx.createBuffer(1, len, ctx.sampleRate);
+    var d = noiseBuf.getChannelData(0);
+    for(var i=0;i<len;i++) d[i] = Math.random()*2-1;
+    return ctx;
+  }
+
+  // 木魚：木頭共鳴 + 敲擊瞬態。重音那拍壓低、拉長，聽起來像「收」
+  function woodBlock(time, accent){
+    var freq = accent ? 760 : 1200;
+    var dur  = accent ? 0.13 : 0.075;
+    var peak = accent ? 1.0  : 0.6;
+
+    var osc = ctx.createOscillator();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(freq, time);
+    osc.frequency.exponentialRampToValueAtTime(freq*0.68, time+dur);
+    var og = ctx.createGain();
+    og.gain.setValueAtTime(0.0001, time);
+    og.gain.exponentialRampToValueAtTime(peak, time+0.003);
+    og.gain.exponentialRampToValueAtTime(0.0001, time+dur);
+    var body = ctx.createBiquadFilter();
+    body.type = 'lowpass'; body.frequency.value = 3400;
+    osc.connect(og); og.connect(body); body.connect(masterGain);
+    osc.start(time); osc.stop(time+dur+0.02);
+
+    var n = ctx.createBufferSource(); n.buffer = noiseBuf;
+    var bp = ctx.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.frequency.value = accent ? 1900 : 2700;
+    bp.Q.value = 1.1;
+    var ng = ctx.createGain();
+    ng.gain.setValueAtTime(peak*0.5, time);
+    ng.gain.exponentialRampToValueAtTime(0.0001, time+0.022);
+    n.connect(bp); bp.connect(ng); ng.connect(masterGain);
+    n.start(time); n.stop(time+0.05);
+  }
+
+  // 你的人聲音檔：排在音訊時鐘上，取樣級精準
+  function playVoiceBuf(idx, time, accent){
+    var buf = voiceBufs[idx];
+    if(!buf) return false;
+    var s = ctx.createBufferSource();
+    s.buffer = buf;
+    var g = ctx.createGain();
+    g.gain.value = accent ? 1.0 : 0.82;
+    s.connect(g); g.connect(masterGain);
+    s.start(time);
+    return true;
+  }
+
+  /* ---------- 載入人聲音檔 ---------- */
+
+  // 自動裁掉頭尾靜音。節拍器最怕的就是檔案開頭那段空白 ——
+  // 錄的時候很難剪乾淨，但程式一看波形就知道聲音從哪裡開始。
+  function trimSilence(buf){
+    var ch = buf.numberOfChannels, n = buf.length;
+
+    // 先找整段的峰值，門檻取峰值的 2%（相對門檻才不會被錄音音量大小影響）
+    var peak = 0, c, i, v;
+    for(c=0;c<ch;c++){
+      var d = buf.getChannelData(c);
+      for(i=0;i<n;i++){ v = Math.abs(d[i]); if(v > peak) peak = v; }
+    }
+    if(peak === 0) return buf;                    // 整段都是靜音，原樣退回
+    var thr = peak * 0.02;
+
+    var first = n, last = 0;
+    for(c=0;c<ch;c++){
+      var dd = buf.getChannelData(c);
+      for(i=0;i<n;i++) if(Math.abs(dd[i]) > thr){ if(i < first) first = i; break; }
+      for(i=n-1;i>=0;i--) if(Math.abs(dd[i]) > thr){ if(i > last) last = i; break; }
+    }
+    if(first >= last) return buf;
+
+    // 起音前留 3ms，免得把子音的氣音頭削掉（「四」「七」最明顯）
+    var pad = Math.floor(buf.sampleRate * 0.003);
+    first = Math.max(0, first - pad);
+    last  = Math.min(n - 1, last + pad);
+
+    var out = ctx.createBuffer(ch, last - first + 1, buf.sampleRate);
+    for(c=0;c<ch;c++) out.getChannelData(c).set(buf.getChannelData(c).subarray(first, last + 1));
+    out._trimmedMs = first / buf.sampleRate * 1000;
+    return out;
+  }
+
+  function renderSlots(){
+    var box = $('slots'); box.innerHTML = '';
+    var n = 0;
+    for(var i=0;i<8;i++){
+      var d = document.createElement('div');
+      d.className = 'slot' + (voiceBufs[i] ? ' has' : '');
+      d.textContent = DIGITS[i];
+      d.title = voiceBufs[i] ? '點一下試聽' : '還沒有檔案';
+      (function(k){
+        d.onclick = function(){
+          if(!voiceBufs[k]) return;
+          initAudio();
+          if(ctx.state === 'suspended') ctx.resume();
+          playVoiceBuf(k, ctx.currentTime + 0.02, false);
+        };
+      })(i);
+      if(voiceBufs[i]) n++;
+      box.appendChild(d);
+    }
+    $('loadedNum').textContent = n + ' / 8';
+  }
+
+  // 從檔名猜是第幾拍：抓第一個 1-8 的數字，或中文數字
+  function guessIndex(name){
+    var base = name.replace(/\.[^.]+$/, '');
+    var m = base.match(/[1-8]/);
+    if(m) return +m[0] - 1;
+    for(var i=0;i<8;i++) if(base.indexOf(DIGITS[i]) >= 0) return i;
+    return -1;
+  }
+
+  function ingestFiles(files){
+    initAudio();
+    var bad = [], trimmed = [];
+    var jobs = Array.prototype.map.call(files, function(f){
+      var idx = guessIndex(f.name);
+      if(idx < 0){ bad.push(f.name); return Promise.resolve(); }
+      return f.arrayBuffer()
+        .then(function(ab){ return ctx.decodeAudioData(ab); })
+        .then(function(buf){
+          var t = trimSilence(buf);
+          voiceBufs[idx] = t;
+          if(t._trimmedMs > 5) trimmed.push(DIGITS[idx] + ' −' + Math.round(t._trimmedMs) + 'ms');
+        })
+        .catch(function(){ bad.push(f.name + '（解不開）'); });
+    });
+    Promise.all(jobs).then(function(){
+      renderSlots();
+      var msg = [];
+      if(bad.length) msg.push('這幾個檔看不出是第幾拍，或格式不支援：' + bad.join('、'));
+      if(trimmed.length) msg.push('已自動裁掉開頭靜音：' + trimmed.join('、'));
+      $('fileWarn').hidden = !msg.length;
+      $('fileWarn').textContent = msg.join('　｜　');
+    });
+  }
+
+  // 頁面載入時試著抓 voice/1.* ～ voice/8.*（正式版用）
+  // 先只探「1」，找不到就整個放棄，免得在沒放音檔的情況下噴一堆 404
+  function autoLoadVoiceFolder(){
+    var exts = ['wav','mp3','m4a','ogg'];
+
+    function grab(num, ext){
+      return fetch('voice/' + num + '.' + ext)
+        .then(function(r){ if(!r.ok) throw 0; return r.arrayBuffer(); })
+        .then(function(ab){ initAudio(); return ctx.decodeAudioData(ab); })
+        .then(function(buf){ voiceBufs[num-1] = trimSilence(buf); });
+    }
+
+    function probe(k){
+      if(k >= exts.length) return;                  // 沒放音檔，安靜收工
+      grab(1, exts[k]).then(function(){
+        // 第一拍找到了，同副檔名把 2～8 一起抓
+        var rest = [];
+        for(var n=2;n<=8;n++) rest.push(grab(n, exts[k]).catch(function(){}));
+        Promise.all(rest).then(renderSlots);
+        renderSlots();
+      }).catch(function(){ probe(k+1); });
+    }
+    probe(0);
+  }
+
+  /* ---------- 系統語音（代用） ---------- */
+  var voices = [], chosenVoice = null;
+  function loadVoices(){
+    if(!('speechSynthesis' in window)) return;
+    voices = speechSynthesis.getVoices().filter(function(v){ return /^zh/i.test(v.lang); });
+    var sel = $('voiceSel'); sel.innerHTML = '';
+    if(!voices.length){
+      $('ttsWarn').hidden = false;
+      $('ttsWarn').textContent = '找不到中文語音。Windows 可到「設定 → 時間與語言 → 語音」加裝，或改用 Chrome / Edge。';
+      sel.innerHTML = '<option>（無中文語音）</option>';
+      chosenVoice = null;
+      return;
+    }
+    $('ttsWarn').hidden = true;
+    voices.forEach(function(v,i){
+      var o = document.createElement('option');
+      o.value = i; o.textContent = v.name + '（' + v.lang + '）';
+      sel.appendChild(o);
+    });
+    var tw = -1;
+    for(var i=0;i<voices.length;i++) if(/zh[-_]TW|Hant/i.test(voices[i].lang)){ tw = i; break; }
+    sel.value = tw >= 0 ? tw : 0;
+    chosenVoice = voices[sel.value];
+  }
+  function speakTTS(text){
+    if(!chosenVoice) return;
+    speechSynthesis.cancel();   // 寧可漏一拍，也不要排隊越講越慢
+    var u = new SpeechSynthesisUtterance(text);
+    u.voice = chosenVoice; u.lang = chosenVoice.lang;
+    u.rate = rate; u.volume = vol;
+    speechSynthesis.speak(u);
+  }
+
+  /* ---------- 排程 ---------- */
+  function isAccent(i){
+    if(accentAt === 'none') return false;
+    return accentAt === 'last' ? (i === beatsPerBar - 1) : (i === 0);
+  }
+
+  function scheduleBeat(i, time){
+    var accent = isAccent(i);
+    if(mode === 'wood') woodBlock(time, accent);
+
+    if(mode === 'voice'){
+      var played = false;
+      if(voiceSrc === 'file') played = playVoiceBuf(i, time, accent);
+      if(!played && (voiceSrc === 'tts' || !voiceBufs[i])){
+        // 語音合成排不進音訊時鐘，只能提前用 setTimeout 觸發
+        var delay = (time - ctx.currentTime) * 1000 - leadMs;
+        speechTimers.push(setTimeout(function(){ speakTTS(DIGITS[i]); }, Math.max(0, delay)));
+      }
+    }
+    visQueue.push({ beat:i, time:time, accent:accent });
+  }
+
+  function scheduler(){
+    while(nextNoteTime < ctx.currentTime + SCHEDULE_AHEAD){
+      scheduleBeat(beatIndex, nextNoteTime);
+      nextNoteTime += 60.0 / bpm;
+      beatIndex = (beatIndex + 1) % beatsPerBar;
+    }
+    timerID = setTimeout(scheduler, LOOKAHEAD);
+  }
+
+  function start(){
+    initAudio();
+    if(ctx.state === 'suspended') ctx.resume();
+    running = true;
+    beatIndex = 0;
+    nextNoteTime = ctx.currentTime + 0.12;
+    $('play').textContent = '停止';
+    $('play').classList.add('running');
+    scheduler();
+    requestAnimationFrame(draw);
+  }
+
+  function stop(){
+    running = false;
+    clearTimeout(timerID);
+    speechTimers.forEach(clearTimeout); speechTimers = [];
+    if('speechSynthesis' in window) speechSynthesis.cancel();
+    visQueue = [];
+    $('play').textContent = '開始';
+    $('play').classList.remove('running');
+    var dots = document.querySelectorAll('.dot');
+    for(var i=0;i<dots.length;i++) dots[i].className = 'dot';
+  }
+
+  /* ---------- 畫面 ---------- */
+  function buildDots(){
+    var box = $('beats'); box.innerHTML = '';
+    for(var i=0;i<beatsPerBar;i++){
+      var d = document.createElement('div');
+      d.className = 'dot';
+      d.textContent = DIGITS[i];
+      box.appendChild(d);
+    }
+  }
+
+  function draw(){
+    if(!running) return;
+    var now = ctx.currentTime, ev = null;
+    // 畫面被節流時（切到背景分頁、手機鎖屏）會一次欠好幾拍，
+    // 那就只畫最新的那一拍，不要補animate跑完整串
+    while(visQueue.length && visQueue[0].time <= now) ev = visQueue.shift();
+    if(ev){
+      var dots = document.querySelectorAll('.dot');
+      for(var i=0;i<dots.length;i++) dots[i].className = 'dot';
+      if(dots[ev.beat]) dots[ev.beat].className = 'dot on' + (ev.accent ? ' acc' : '');
+    }
+    requestAnimationFrame(draw);
+  }
+
+  /* ---------- 控制 ---------- */
+  function setBpm(v){
+    bpm = Math.min(240, Math.max(30, Math.round(v)));
+    $('bpm').value = bpm;
+    $('bpmNum').textContent = bpm;
+  }
+  $('bpm').addEventListener('input', function(e){ setBpm(+e.target.value); });
+  $('m8').onclick = function(){ setBpm(bpm-8); };
+  $('p8').onclick = function(){ setBpm(bpm+8); };
+  $('play').onclick = function(){ running ? stop() : start(); };
+
+  var taps = [];
+  $('tap').onclick = function(){
+    var now = performance.now();
+    taps = taps.filter(function(t){ return now - t < 2500; });
+    taps.push(now);
+    if(taps.length >= 2){
+      var sum = 0;
+      for(var i=1;i<taps.length;i++) sum += taps[i]-taps[i-1];
+      setBpm(60000 / (sum/(taps.length-1)));
+    }
+  };
+
+  (function(){
+    var row = $('barRow');
+    [2,3,4,6,8].forEach(function(n){
+      var b = document.createElement('button');
+      b.textContent = n;
+      if(n === 4) b.className = 'sel';
+      b.onclick = function(){
+        beatsPerBar = n;
+        var bs = row.querySelectorAll('button');
+        for(var i=0;i<bs.length;i++) bs[i].classList.remove('sel');
+        b.classList.add('sel');
+        buildDots();
+        beatIndex = 0;
+      };
+      row.appendChild(b);
+    });
+  })();
+
+  function pickRow(rowId, attr, cb){
+    var row = $(rowId), bs = row.querySelectorAll('button');
+    for(var i=0;i<bs.length;i++){
+      (function(b){
+        b.onclick = function(){
+          for(var j=0;j<bs.length;j++) bs[j].classList.remove('sel');
+          b.classList.add('sel');
+          cb(b.getAttribute(attr));
+        };
+      })(bs[i]);
+    }
+  }
+  pickRow('modeRow','data-mode', function(v){
+    mode = v;
+    $('voiceBlock').hidden = (v !== 'voice');
+  });
+  pickRow('accRow','data-acc', function(v){ accentAt = v; });
+  pickRow('srcRow','data-src', function(v){
+    voiceSrc = v;
+    $('filePane').hidden = (v !== 'file');
+    $('ttsPane').hidden  = (v !== 'tts');
+  });
+
+  $('vol').addEventListener('input', function(e){
+    vol = e.target.value/100;
+    $('volNum').textContent = e.target.value + '%';
+    if(masterGain) masterGain.gain.value = vol;
+  });
+  $('rate').addEventListener('input', function(e){
+    rate = e.target.value/100; $('rateNum').textContent = rate.toFixed(2);
+  });
+  $('lead').addEventListener('input', function(e){
+    leadMs = +e.target.value; $('leadNum').textContent = leadMs + ' ms';
+  });
+  $('voiceSel').addEventListener('change', function(e){ chosenVoice = voices[e.target.value]; });
+
+  // 拖放 / 選檔
+  var drop = $('drop'), fi = $('fileInput');
+  drop.onclick = function(){ fi.click(); };
+  fi.onchange = function(){ if(fi.files.length) ingestFiles(fi.files); };
+  ['dragenter','dragover'].forEach(function(ev){
+    drop.addEventListener(ev, function(e){ e.preventDefault(); drop.classList.add('over'); });
+  });
+  ['dragleave','drop'].forEach(function(ev){
+    drop.addEventListener(ev, function(e){ e.preventDefault(); drop.classList.remove('over'); });
+  });
+  drop.addEventListener('drop', function(e){
+    if(e.dataTransfer && e.dataTransfer.files.length) ingestFiles(e.dataTransfer.files);
+  });
+
+  document.addEventListener('keydown', function(e){
+    if(e.target.tagName === 'SELECT' || e.target.tagName === 'INPUT') return;
+    if(e.code === 'Space'){ e.preventDefault(); running ? stop() : start(); }
+    if(e.code === 'ArrowUp'){ e.preventDefault(); setBpm(bpm+1); }
+    if(e.code === 'ArrowDown'){ e.preventDefault(); setBpm(bpm-1); }
+  });
+
+  /* ---------- 起手 ---------- */
+  buildDots();
+  renderSlots();
+  autoLoadVoiceFolder();
+  if('speechSynthesis' in window){
+    loadVoices();
+    speechSynthesis.onvoiceschanged = loadVoices;
+  } else {
+    $('ttsWarn').hidden = false;
+    $('ttsWarn').textContent = '這個瀏覽器不支援語音合成。請用你自己的音檔。';
+  }
+})();
+</script>
+</body>
+</html>
