@@ -96,7 +96,7 @@
       <button data-sub="3">三連音</button>
       <button data-sub="4">4</button>
     </div>
-    <div class="hint">中間那幾下是輕點，正拍才是木魚／數字。</div>
+    <div class="hint">木魚模式：中間那幾下是輕點。<br>中文數拍模式：改成在一拍之內數 —— 三連音就是「一、二、三」。</div>
   </div>
 
   <div class="block">
@@ -201,15 +201,27 @@
   }
 
   // 你的人聲音檔：排在音訊時鐘上，取樣級精準
-  function playVoiceBuf(idx, time, accent){
+  // maxDur：這個字最多能佔多久。音檔 342～410ms，但 120BPM 的三連音
+  // 一下只有 167ms —— 不收掉的話三個字會糊成一團。
+  function playVoiceBuf(idx, time, accent, gainMul, maxDur){
     var buf = voiceBufs[idx];
     if(!buf) return false;
     var s = ctx.createBufferSource();
     s.buffer = buf;
     var g = ctx.createGain();
-    g.gain.value = accent ? 1.0 : 0.82;
+    var lvl = (accent ? 1.0 : 0.82) * (gainMul || 1);
+    g.gain.setValueAtTime(lvl, time);
     s.connect(g); g.connect(masterGain);
-    s.start(time);
+
+    if(maxDur && buf.duration > maxDur){
+      var fade = Math.min(0.030, maxDur * 0.35);
+      g.gain.setValueAtTime(lvl, time + maxDur - fade);
+      g.gain.linearRampToValueAtTime(0.0001, time + maxDur);
+      s.start(time);
+      s.stop(time + maxDur + 0.005);
+    } else {
+      s.start(time);
+    }
     return true;
   }
 
@@ -287,21 +299,30 @@
     return accentAt === 'last' ? (i === beatsPerBar - 1) : (i === 0);
   }
 
-  function scheduleBeat(i, time){
+  function scheduleBeat(i, time, slot){
     var accent = isAccent(i);
     if(mode === 'wood') woodBlock(time, accent);
-
-    if(mode === 'voice') playVoiceBuf(i, time, accent);
+    if(mode === 'voice') playVoiceBuf(i, time, accent, 1, slot);
     visQueue.push({ beat:i, time:time, accent:accent });
   }
 
   function scheduler(){
     while(nextNoteTime < ctx.currentTime + SCHEDULE_AHEAD){
-      // 正拍走原本那套，分拍只給一下輕點
-      if(subIndex === 0) scheduleBeat(beatIndex, nextNoteTime);
-      else subTick(nextNoteTime);
+      var slot = 60.0 / bpm / subdiv;        // 這一下能佔多久
+      var main = (subIndex === 0);
 
-      nextNoteTime += 60.0 / bpm / subdiv;   // 一拍切成 subdiv 等份
+      if(mode === 'voice' && subdiv > 1){
+        // 有細分時，中文改成「一拍之內數」：一、二、三
+        var accent = main && isAccent(beatIndex);
+        playVoiceBuf(subIndex, nextNoteTime, accent, main ? 1 : 0.7, slot * 0.95);
+        if(main) visQueue.push({ beat:beatIndex, time:nextNoteTime, accent:accent });
+      } else if(main){
+        scheduleBeat(beatIndex, nextNoteTime, slot * 0.95);
+      } else {
+        subTick(nextNoteTime);
+      }
+
+      nextNoteTime += slot;                  // 一拍切成 subdiv 等份
       subIndex++;
       if(subIndex >= subdiv){
         subIndex = 0;
