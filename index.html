@@ -64,12 +64,12 @@
   .warn{color:var(--hot)}
 
   /* 節奏型按鈕：樂譜圖標 + 名稱 */
-  #subRow{gap:6px}
+  #subRow{gap:5px}
   #subRow button{
     display:flex; flex-direction:column; align-items:center; gap:3px;
-    padding:9px 2px; font-size:12px; line-height:1.2;
+    padding:9px 1px; font-size:11.5px; line-height:1.2; white-space:nowrap;
   }
-  .nt{width:100%; max-width:46px; height:27px; display:block; fill:currentColor}
+  .nt{width:100%; max-width:44px; height:26px; display:block; fill:currentColor}
   .nn{font-size:9px; font-weight:700; text-anchor:middle; fill:currentColor}
 
   .kbd{font-size:12px; color:var(--dim); text-align:center; margin-top:18px}
@@ -134,7 +134,20 @@
         <span>長短拍</span>
       </button>
 
-      <button data-sub="dot" title="附點：前短後長 1:3（十六分 + 附點八分）">
+      <button data-sub="dot" title="附點：前長後短 3:1（附點八分 + 十六分）">
+        <svg class="nt" viewBox="0 0 48 30" aria-hidden="true">
+          <ellipse cx="11" cy="22" rx="4.6" ry="3.3" transform="rotate(-20 11 22)"/>
+          <circle cx="20.8" cy="21.4" r="1.9"/>
+          <rect x="14.7" y="8" width="1.7" height="14.3"/>
+          <ellipse cx="33" cy="22" rx="4.6" ry="3.3" transform="rotate(-20 33 22)"/>
+          <rect x="36.7" y="8" width="1.7" height="14.3"/>
+          <rect x="14.7" y="8" width="23.7" height="2.6"/>
+          <rect x="30.4" y="12.2" width="8" height="2.6"/>
+        </svg>
+        <span>附點</span>
+      </button>
+
+      <button data-sub="rdot" title="反附點：前短後長 1:3（十六分 + 附點八分）">
         <svg class="nt" viewBox="0 0 48 30" aria-hidden="true">
           <ellipse cx="10" cy="22" rx="4.6" ry="3.3" transform="rotate(-20 10 22)"/>
           <rect x="13.7" y="8" width="1.7" height="14.3"/>
@@ -144,10 +157,10 @@
           <rect x="13.7" y="8" width="21.7" height="2.6"/>
           <rect x="13.7" y="12.2" width="8" height="2.6"/>
         </svg>
-        <span>附點</span>
+        <span>反附點</span>
       </button>
     </div>
-    <div class="hint">長短拍 2:1（前長後短，搖擺感），附點 1:3（前短後長）。<br>木魚模式中間那幾下是輕點；中文數拍模式改成在一拍之內數。</div>
+    <div class="hint">長短拍 2:1（搖擺感）、附點 3:1（前長後短）、反附點 1:3（前短後長）。<br>木魚模式中間那幾下是輕點；中文數拍模式改成在一拍之內數。</div>
   </div>
 
   <div class="block">
@@ -186,7 +199,8 @@
     none:   [0],                // 不分
     trip:   [0, 1/3, 2/3],      // 三連音：三等分
     swing:  [0, 2/3],           // 長短拍：長 2 短 1（三連音的第一下和第三下）
-    dot:    [0, 1/4]            // 附點：前短後長 1:3（十六分 + 附點八分）
+    dot:    [0, 3/4],           // 附點：前長後短 3:1（附點八分 + 十六分）
+    rdot:   [0, 1/4]            // 反附點：前短後長 1:3（十六分 + 附點八分）
   };
   var bpm = 90, beatsPerBar = 4, pattern = PATTERNS.none, mode = 'wood', accentAt = 'last';
   var vol = 0.7;
