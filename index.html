@@ -320,19 +320,21 @@
     g.gain.setValueAtTime(lvl, Math.max(ctx.currentTime, startAt));
     s.connect(g); g.connect(masterGain);
 
-    // maxDur 是從拍點算起能佔多久，所以子音那段不算在內
-    if(maxDur && (buf.duration - lead) > maxDur){
-      var fade = Math.min(0.030, maxDur * 0.35);
-      g.gain.setValueAtTime(lvl, time + maxDur - fade);
-      g.gain.linearRampToValueAtTime(0.0001, time + maxDur);
-      s.stop(time + maxDur + 0.005);
-    }
-
+    // 先 start 再 stop —— 反過來呼叫 Web Audio 會丟 InvalidStateError，
+    // 排程器一旦吃到例外就整個停掉（速度推高時才會踩到這條路）
     if(startAt >= ctx.currentTime){
       s.start(startAt);
     } else {
       // 來不及提前（剛按下開始的第一拍），就從檔案中間切進去
       s.start(ctx.currentTime, Math.min(buf.duration - 0.001, ctx.currentTime - startAt));
+    }
+
+    // maxDur 是從拍點算起能佔多久，所以子音那段不算在內
+    if(maxDur > 0 && (buf.duration - lead) > maxDur){
+      var fade = Math.min(0.030, maxDur * 0.35);
+      g.gain.setValueAtTime(lvl, time + maxDur - fade);
+      g.gain.linearRampToValueAtTime(0.0001, time + maxDur);
+      s.stop(time + maxDur + 0.005);
     }
     return true;
   }
@@ -431,13 +433,21 @@
       var slot = (next - here) * beatDur;
       var main = (subIndex === 0);
 
+      // 下一個字要提前多少秒開始。像「七」要提前 200ms，那這個字就只能
+      // 響到那之前，否則它的尾巴會跟下一個字的子音疊在一起（6→7 會糊）。
+      var nextIdx = (mode === 'voice' && pattern.length > 1)
+        ? (subIndex + 1) % pattern.length
+        : (beatIndex + 1) % beatsPerBar;
+      var nextLead = (mode === 'voice') ? voiceLead[nextIdx] : 0;
+      var room = Math.max(slot * 0.35, slot - nextLead - 0.015);
+
       if(mode === 'voice' && pattern.length > 1){
         // 有細分時，中文改成「一拍之內數」：一、二、三
         var accent = main && isAccent(beatIndex);
-        playVoiceBuf(subIndex, nextNoteTime, accent, main ? 1 : 0.7, slot * 0.95);
+        playVoiceBuf(subIndex, nextNoteTime, accent, main ? 1 : 0.7, room);
         if(main) visQueue.push({ beat:beatIndex, time:nextNoteTime, accent:accent });
       } else if(main){
-        scheduleBeat(beatIndex, nextNoteTime, slot * 0.95);
+        scheduleBeat(beatIndex, nextNoteTime, room);
       } else {
         subTick(nextNoteTime);
       }
