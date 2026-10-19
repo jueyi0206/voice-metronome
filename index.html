@@ -208,8 +208,9 @@
 
   var ctx = null, masterGain = null, noiseBuf = null;
   var voiceBufs = new Array(8).fill(null);     // 你的音檔，解碼後放這
+  var voiceLead = new Array(8).fill(0);        // 每個字從檔頭到母音的距離（秒）
   var nextNoteTime = 0, beatIndex = 0, subIndex = 0, timerID = null;
-  var LOOKAHEAD = 25, SCHEDULE_AHEAD = 0.15;
+  var LOOKAHEAD = 25, SCHEDULE_AHEAD = 0.30;   // 要容得下最長的子音提前量
   var visQueue = [];
 
   var $ = function(id){ return document.getElementById(id); };
@@ -274,26 +275,64 @@
   }
 
   // 你的人聲音檔：排在音訊時鐘上，取樣級精準
+  // 找母音起點。「七」的ㄑ送氣音長達 195ms、「三」「四」的ㄙ也很長，
+  // 這些字如果把檔頭對在拍點上，母音就會遲到 —— 聽起來就是那一拍卡住。
+  // 人唸拍子是把母音對在拍上，子音自然提前，程式照做。
+  //
+  // 判斷方式：摩擦音與送氣音的零交越率很高（6000Hz 以上），母音很低
+  // （多半 1500Hz 以下）。所以找第一個「夠大聲而且夠低頻」的位置。
+  function findVowel(buf){
+    var d = buf.getChannelData(0), sr = buf.sampleRate;
+    var HOP = Math.floor(sr * 0.01), N = Math.floor((d.length - HOP) / HOP);
+    if(N < 2) return 0;
+
+    var rms = new Float32Array(N), zcr = new Float32Array(N), mx = 0, i, k;
+    for(i = 0; i < N; i++){
+      var off = i * HOP, s = 0, z = 0;
+      for(k = 0; k < HOP; k++) s += d[off+k] * d[off+k];
+      for(k = 1; k < HOP; k++) if((d[off+k-1] < 0) !== (d[off+k] < 0)) z++;
+      rms[i] = Math.sqrt(s / HOP);
+      zcr[i] = z / 2 / (HOP / sr);
+      if(rms[i] > mx) mx = rms[i];
+    }
+    if(mx === 0) return 0;
+
+    for(i = 0; i < N; i++)
+      if(rms[i] >= mx * 0.4 && zcr[i] < 2000) return i * 0.01;
+
+    return 0;   // 整個字都是高頻（不該發生），就照檔頭對齊
+  }
+
   // maxDur：這個字最多能佔多久。音檔 342～410ms，但 120BPM 的三連音
   // 一下只有 167ms —— 不收掉的話三個字會糊成一團。
+  // time = 拍點。母音要落在這裡，所以檔案得提前 lead 秒開始放。
   function playVoiceBuf(idx, time, accent, gainMul, maxDur){
     var buf = voiceBufs[idx];
     if(!buf) return false;
+
+    var lead = voiceLead[idx];
+    var startAt = time - lead;
+
     var s = ctx.createBufferSource();
     s.buffer = buf;
     var g = ctx.createGain();
     var lvl = (accent ? 1.0 : 0.82) * (gainMul || 1);
-    g.gain.setValueAtTime(lvl, time);
+    g.gain.setValueAtTime(lvl, Math.max(ctx.currentTime, startAt));
     s.connect(g); g.connect(masterGain);
 
-    if(maxDur && buf.duration > maxDur){
+    // maxDur 是從拍點算起能佔多久，所以子音那段不算在內
+    if(maxDur && (buf.duration - lead) > maxDur){
       var fade = Math.min(0.030, maxDur * 0.35);
       g.gain.setValueAtTime(lvl, time + maxDur - fade);
       g.gain.linearRampToValueAtTime(0.0001, time + maxDur);
-      s.start(time);
       s.stop(time + maxDur + 0.005);
+    }
+
+    if(startAt >= ctx.currentTime){
+      s.start(startAt);
     } else {
-      s.start(time);
+      // 來不及提前（剛按下開始的第一拍），就從檔案中間切進去
+      s.start(ctx.currentTime, Math.min(buf.duration - 0.001, ctx.currentTime - startAt));
     }
     return true;
   }
@@ -351,7 +390,11 @@
       return fetch('voice/' + num + '.' + ext)
         .then(function(r){ if(!r.ok) throw 0; return r.arrayBuffer(); })
         .then(function(ab){ initAudio(); return ctx.decodeAudioData(ab); })
-        .then(function(buf){ voiceBufs[num-1] = trimSilence(buf); });
+                .then(function(buf){
+          var t = trimSilence(buf);
+          voiceBufs[num-1] = t;
+          voiceLead[num-1] = findVowel(t);
+        });
     }
 
     function probe(k){
@@ -415,7 +458,7 @@
     running = true;
     beatIndex = 0;
     subIndex = 0;
-    nextNoteTime = ctx.currentTime + 0.12;
+    nextNoteTime = ctx.currentTime + 0.35;   // 第一拍也要留得下子音的提前量
     $('play').textContent = '停止';
     $('play').classList.add('running');
     scheduler();
