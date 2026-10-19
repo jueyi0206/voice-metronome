@@ -91,3 +91,5 @@ python tools/align_voice.py <來源資料夾> <輸出資料夾> [--target 毫秒
 |---|---|
 | `index.html` | 全部，單檔 |
 | `voice/` | 人聲音檔 |
+| `tools/align_voice.py` | 把一組音檔整成長度、音量一致 |
+| [ARCHITECTURE.md](ARCHITECTURE.md) | 架構、設計決定、踩過的坑 |
