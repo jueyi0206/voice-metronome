@@ -160,7 +160,7 @@
         <span>反附點</span>
       </button>
     </div>
-    <div class="hint">長短拍 2:1（搖擺感）、附點 3:1（前長後短）、反附點 1:3（前短後長）。<br>中文數拍：三連音與長短拍在一拍之內數；附點與反附點念小節的拍，短音給輕點。</div>
+    <div class="hint">長短拍 2:1（搖擺感）、附點 3:1（前長後短）、反附點 1:3（前短後長）。<br>中文數拍：三連音與長短拍在一拍之內數；附點與反附點一拍念兩個數字，4 拍剛好是（一二）（三四）（五六）（七八）。</div>
   </div>
 
   <div class="block">
@@ -210,9 +210,18 @@
     dot:    [0, 3/4],           // 附點：前長後短 3:1（附點八分 + 十六分）
     rdot:   [0, 1/4]            // 反附點：前短後長 1:3（十六分 + 附點八分）
   };
-  // 哪些節奏型的中文是「在一拍之內數」。附點和反附點不算 —— 它們念的是
-  // 小節的拍（一到八），中間那下短音給輕點，因為沒有「ㄜ／and」的音檔。
-  var COUNT_IN_BEAT = { trip: true, swing: true };
+  // 中文數拍時，每個節奏型各自怎麼數：
+  //   inBeat —— 在一拍之內數。三連音「一二三」、長短拍「一二」，每拍重來
+  //   paired —— 一拍兩個數字，整個小節連號。4 拍就是 (1,2)(3,4)(5,6)(7,8)
+  //   bar    —— 一拍一個數字，數小節的拍（「不分」走這條）
+  var COUNT_MODE = { trip:'inBeat', swing:'inBeat', dot:'paired', rdot:'paired' };
+
+  // 這一下該念第幾個數字（0 起算）
+  function digitIndex(mode_, beat, sub){
+    if(mode_ === 'inBeat') return sub;
+    if(mode_ === 'paired') return (beat * pattern.length + sub) % 8;
+    return beat % 8;
+  }
 
   var bpm = 90, beatsPerBar = 4, mode = 'wood', accentAt = 'last';
   var patternKey = 'none', pattern = PATTERNS.none;
@@ -448,17 +457,22 @@
 
       // 下一個字要提前多少秒開始。像「七」要提前 200ms，那這個字就只能
       // 響到那之前，否則它的尾巴會跟下一個字的子音疊在一起（6→7 會糊）。
-      var inBeat = (mode === 'voice' && pattern.length > 1 && COUNT_IN_BEAT[patternKey]);
-      var nextIdx = inBeat
-        ? (subIndex + 1) % pattern.length
-        : (beatIndex + 1) % beatsPerBar;
-      var nextLead = (mode === 'voice') ? voiceLead[nextIdx] : 0;
+      var cmode = (pattern.length > 1) ? COUNT_MODE[patternKey] : 'bar';
+      var speaks = (mode === 'voice' && cmode !== 'bar');   // 分拍也要出聲？
+
+      // 下一下要念的是哪個字 —— 它的子音要提前多久開始。像「七」要提前
+      // 200ms，那這一下就只能響到那之前，否則尾巴會跟它疊在一起。
+      var nSub  = (subIndex + 1) % pattern.length;
+      var nBeat = (nSub === 0) ? (beatIndex + 1) % beatsPerBar : beatIndex;
+      var nextLead = 0;
+      if(mode === 'voice' && (speaks || nSub === 0))
+        nextLead = voiceLead[digitIndex(speaks ? cmode : 'bar', nBeat, nSub)];
       var room = Math.max(slot * 0.35, slot - nextLead - 0.015);
 
-      if(inBeat){
-        // 有細分時，中文改成「一拍之內數」：一、二、三
+      if(speaks){
         var accent = main && isAccent(beatIndex);
-        playVoiceBuf(subIndex, nextNoteTime, accent, main ? 1 : 0.7, room);
+        playVoiceBuf(digitIndex(cmode, beatIndex, subIndex),
+                     nextNoteTime, accent, main ? 1 : 0.7, room);
         if(main) visQueue.push({ beat:beatIndex, time:nextNoteTime, accent:accent });
       } else if(main){
         scheduleBeat(beatIndex, nextNoteTime, room);
